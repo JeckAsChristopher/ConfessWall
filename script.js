@@ -1,13 +1,19 @@
 'use strict';
 
-if (sessionStorage.getItem("captchaPassed") !== "true") {
-  alert("Unauthorized access. Please complete CAPTCHA first.");
-  window.location.href = "index.html"; // Change this to your CAPTCHA page
-}
+// Prevent tampering and enforce immediate redirect if not passed
+(() => {
+  try {
+    const passed = sessionStorage.getItem("captchaPassed");
+    if (passed !== "true") {
+      location.replace("index.html");
+    }
+  } catch (err) {
+    location.replace("index.html");
+  }
+})();
 
 const servers = [
-  'https://confessserver.onrender.com',
-  'https://confessserver-production.up.railway.app'
+  '0.0.0.0:3000', 'https://confessserver-production.up.railway.app'
 ];
 
 const memoryStorage = {
@@ -59,6 +65,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingsPanel = document.getElementById('settingsPanel');
   const darkToggleBtn = document.getElementById('darkModeToggle');
   const safeToggleBtn = document.getElementById('safeModeToggle');
+  
+  function handleImageError(img, src) {
+  console.warn(`Image failed to load: ${src}`);
+  img.src = 'https://via.placeholder.com/300x200?text=Image+Unavailable';
+  img.classList.add('fallback-img');
+}
 
   function escapeHTML(str) {
     return str.replace(/&/g, '&amp;')
@@ -104,37 +116,96 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Error posting confession:', err);
       alert('Network error. Please try again later.');
     }
-  });
+  }); 
 
-  async function loadConfessions() {
-    try {
-      const confessions = await smartFetch('/confessions');
-      list.innerHTML = confessions.map(c => `
-        <div class="confession" data-id="${c.id}">
-          <p>${escapeHTML(c.message)}</p>
-          ${c.photo ? `<img src="${escapeHTML(c.photo)}" alt="Confession Photo" class="confess-img protect-img2" oncontextmenu="return false" ondragstart="return false">` : ''}
-          <div class="confession-footer">
-            <button class="heart-btn ${isLiked(c.id) ? 'liked' : ''}" title="React ❤️">
-              <svg viewBox="0 0 24 24" class="heart-icon" xmlns="http://www.w3.org/2000/svg">
-                <path class="heart-path" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 
+async function loadConfessions() {
+  try {
+    const confessions = await smartFetch('/confessions');
+    list.innerHTML = confessions.map(c => `
+      <div class="confession" data-id="${c.id}">
+        <p>${escapeHTML(c.message)}</p>
+        ${c.photo ? `
+          <img 
+  src="${escapeHTML(c.photo)}" 
+  alt="Confession Photo" 
+  class="confess-img" 
+  onclick="openImageModal('${escapeHTML(c.photo)}')"
+  onerror="handleImageError(this, '${escapeHTML(c.photo)}')" 
+  oncontextmenu="return false" 
+  ondragstart="return false">` : ''}
+        <div class="confession-footer">
+          <button class="heart-btn ${isLiked(c.id) ? 'liked' : ''}" title="React ❤️">
+            <svg viewBox="0 0 24 24" class="heart-icon" xmlns="http://www.w3.org/2000/svg">
+              <path class="heart-path" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 
                 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 
                 4.5 2.09C13.09 3.81 14.76 3 16.5 3
                 19.58 3 22 5.42 22 8.5
                 c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/>
-              </svg>
-              <span class="like-count">${c.likes || 0}</span>
-            </button>
-            <div class="time">${escapeHTML(c.time)}</div>
-          </div>
+            </svg>
+            <span class="like-count">${c.likes || 0}</span>
+          </button>
+          <div class="time">${escapeHTML(c.time)}</div>
         </div>
-      `).join('');
+      </div>
+    `).join('');
       setupHeartButtons();
     } catch (err) {
-      console.error('❌ All servers failed. Reloading in 5 seconds...');
+      console.error('All servers failed. Reloading in 5 seconds...');
       list.innerHTML = `<p style="color:red;">Servers unreachable. Reloading...</p>`;
       setTimeout(() => location.reload(), 5000);
     }
   }
+  
+  document.getElementById('closeModalBtn')?.addEventListener('click', () => {
+  document.getElementById('photoModal')?.classList.remove('active');
+});
+
+function openImageModal(photoUrl) {
+  const modal = document.getElementById('photoModal');
+  const modalImage = document.getElementById('modalImage');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const shareBtn = document.getElementById('shareBtn');
+
+  modalImage.src = photoUrl;
+  modal.classList.add('active');
+
+  downloadBtn.onclick = async () => {
+  try {
+    const response = await fetch(photoUrl, { mode: 'cors' });
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'confession-photo.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+     
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch (err) {
+    console.error('Failed to download image:', err);
+    alert('Could not download image. Try again later.');
+  }
+};
+
+  shareBtn.onclick = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Confession Photo',
+          url: photoUrl
+        });
+      } else {
+        alert("Sharing not supported on this browser.");
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+    }
+  };
+}
+
+window.openImageModal = openImageModal;
 
   async function likeConfession(id, btn, countSpan) {
     try {
@@ -281,67 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasPhoto = fileInput.files.length > 0;
     submitBtn.disabled = !(hasText || hasPhoto);
   }
-  
-(() => {
-  // Preserve native functions
-  const nativeAlert = window.alert.bind(window);
-  const nativeConsole = { ...console };
-  const nativeEval = window.eval;
-  const nativeFunction = window.Function;
 
-  // Block console access visually and silently
-  const msg = "🚫 Console is disabled.";
-  ['log', 'warn', 'error', 'info', 'debug', 'trace'].forEach(method => {
-    console[method] = function () {
-      const div = document.createElement('div');
-      div.textContent = msg;
-      div.style = "color: red; background: black; padding: 8px; font-weight: bold;";
-      document.body.appendChild(div);
-    };
-  });
-
-  // Hard block eval and Function constructor
-  window.eval = function () {
-    nativeAlert("🚨 eval is blocked.");
-    throw new Error("eval is disabled.");
-  };
-
-  window.Function = function () {
-    nativeAlert("🚨 Function constructor is blocked.");
-    throw new Error("Function is disabled.");
-  };
-
-  // Optional: alert on prompt/confirm
-  window.prompt = () => {
-    nativeAlert("🚨 prompt is blocked.");
-    return null;
-  };
-  window.confirm = () => {
-    nativeAlert("🚨 confirm is blocked.");
-    return false;
-  };
-
-  // Prevent script injections
-  const observer = new MutationObserver(mutations => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.tagName === 'SCRIPT') {
-          nativeAlert("🚨 External script blocked.");
-          node.remove();
-        }
-      }
-    }
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  // Detect console tampering
-  setInterval(() => {
-    if (console.log.toString().includes('[native code]')) {
-      nativeAlert("🚨 Console tampering detected. Reloading...");
-      location.reload();
-    }
-  }, 5000);
-})();
 
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('confessForm');
@@ -349,20 +360,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); // Prevent form from submitting by default
-
+    
     const turnstileToken = document.querySelector('input[name="cf-turnstile-response"]')?.value;
 
     if (!turnstileToken) {
-      alert("⚠️ Please complete the CAPTCHA before submitting.");
+      alert("Please complete the CAPTCHA before submitting.");
       return;
     }
 
-    // If token exists, you can continue submitting or show success
-    // Since you're on GitHub Pages (no server), we just show a success message
     alert("✅ Confession submitted successfully!\n(CAPTCHA token: " + turnstileToken + ")");
 
     // Clear form or reset logic
     form.reset();
+    
     document.getElementById('charCount').textContent = "0/500";
     document.getElementById('previewContainer').style.display = 'none';
   });
@@ -378,3 +388,5 @@ document.addEventListener('DOMContentLoaded', () => {
   checkInput();
   loadConfessions();
 });
+
+console.warn("Warning: Do not modify anything, write, inject a script!")

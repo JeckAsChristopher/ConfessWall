@@ -5,13 +5,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Human Verification</title>
-
-  <!-- Cloudflare Turnstile -->
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-
-  <!-- Optional CSP (Content Security Policy) -->
-  <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; img-src https://cdn-icons-png.flaticon.com;"> -->
-
   <style>
     body {
       margin: 0;
@@ -32,6 +26,7 @@
       position: relative;
       overflow: hidden;
       text-align: center;
+      transition: transform 0.2s ease;
     }
 
     .icon {
@@ -40,36 +35,52 @@
       margin: 0 auto 1rem;
       user-select: none;
       pointer-events: none;
-      transition: transform 0.6s ease, opacity 0.6s ease;
     }
 
     .lock-icon {
-      transform-origin: bottom center;
       animation: bounceLock 1.2s ease-in-out infinite;
     }
 
-    .unlock-icon {
+    .unlock-icon, .error-icon {
       position: absolute;
       top: 2rem;
       left: calc(50% - 28px);
       opacity: 0;
-      transform: rotate(-90deg) scale(0);
+      transform: scale(0);
       transition: all 0.6s ease-in-out;
     }
 
-    .unlocked .lock-icon {
-      transform: rotate(-45deg) translateY(-10px) scale(0.8);
+    .unlocked .lock-icon,
+    .error .lock-icon {
       opacity: 0;
+      transform: scale(0.8);
     }
 
     .unlocked .unlock-icon {
       opacity: 1;
-      transform: rotate(0deg) scale(1);
+      transform: scale(1);
+    }
+
+    .error .error-icon {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+
+    .error.shake {
+      animation: shake 0.4s ease;
     }
 
     @keyframes bounceLock {
       0%, 100% { transform: translateY(0px); }
       50% { transform: translateY(-5px); }
+    }
+
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
     }
 
     h2 {
@@ -81,6 +92,10 @@
 
     .unlocked h2 {
       color: #1a8f00;
+    }
+
+    .error h2 {
+      color: #e53935;
     }
 
     .cf-turnstile {
@@ -96,26 +111,15 @@
 </head>
 <body>
   <div class="verification-container" id="verifyBox">
-    <img
-      src="https://cdn-icons-png.flaticon.com/512/747/747305.png"
-      alt="Locked Padlock Icon"
-      class="icon lock-icon"
-      oncontextmenu="return false" ondragstart="return false"
-      onmousedown="return false" ontouchstart="event.preventDefault();"
-    />
-    <img
-      src="https://cdn-icons-png.flaticon.com/512/747/747315.png"
-      alt="Unlocked Padlock Icon"
-      class="icon unlock-icon"
-      oncontextmenu="return false" ondragstart="return false"
-      onmousedown="return false" ontouchstart="event.preventDefault();"
-    />
+    <img src="https://cdn-icons-png.flaticon.com/512/747/747305.png" alt="Locked" class="icon lock-icon"
+      oncontextmenu="return false" ondragstart="return false" onmousedown="return false" />
+    <img src="https://cdn-icons-png.flaticon.com/512/747/747315.png" alt="Unlocked" class="icon unlock-icon" />
+    <img src="https://cdn-icons-png.flaticon.com/512/463/463612.png" alt="Error" class="icon error-icon" />
     <h2 id="statusText">Please verify you're human</h2>
-    <div
-      class="cf-turnstile"
+    <div class="cf-turnstile"
       data-sitekey="0x4AAAAAABik1y5w-2dRqI5E"
-      data-callback="onVerified"
-    ></div>
+      data-callback="onVerified">
+    </div>
   </div>
 
   <script>
@@ -128,11 +132,13 @@
       const box = document.getElementById("verifyBox");
       const text = document.getElementById("statusText");
       const captcha = document.querySelector(".cf-turnstile");
+
       let success = false;
       let lastError = null;
 
-      // Timeout fallback: auto-fail if fetch takes longer than 8s per server
-      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms));
+      const timeout = ms => new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out")), ms)
+      );
 
       for (const baseUrl of servers) {
         try {
@@ -145,9 +151,7 @@
             timeout(8000)
           ]);
 
-          if (!res.ok) throw new Error(`Server error: ${res.status}`);
           const data = await res.json();
-
           if (data.success) {
             box.classList.add("unlocked");
             text.textContent = "Access granted! Redirecting…";
@@ -157,18 +161,18 @@
             setTimeout(() => location.href = "main.html", 1500);
             break;
           } else {
-            text.textContent = "CAPTCHA failed. Please try again.";
-            return;
+            throw new Error("CAPTCHA failed");
           }
         } catch (err) {
-          console.warn(`Failed to verify on ${baseUrl}:`, err);
+          console.warn(`Failed on server:`, err.message);
           lastError = err;
         }
       }
 
       if (!success) {
-        text.textContent = "Verification error. Refreshing in 5 seconds…";
-        console.error("All servers failed:", lastError);
+        box.classList.remove("unlocked");
+        box.classList.add("error", "shake");
+        text.textContent = "Verification failed. Refreshing in 5s…";
         setTimeout(() => location.reload(), 5000);
       }
     }

@@ -3,84 +3,110 @@
 <head>  
   <meta charset="UTF-8" />  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />  
+  <meta name="theme-color" content="#ffffff" />
   <title>Confess Wall</title>  
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />
 </head>  
+
 <body>  
 
-  <!-- Settings Button -->  
+  <!-- ⚙️ Settings Button -->  
   <button class="settings-btn" id="settingsBtn" title="Settings" aria-label="Open Settings">  
     <img   
       src="https://cdn-icons-png.flaticon.com/512/3524/3524659.png"   
       alt="Settings Icon"  
-      width="24"   
-      height="24"  
+      width="24" height="24"
       class="protect-img"  
-      oncontextmenu="return false"  
-      ondragstart="return false"  
-      onmousedown="return false"  
-      ontouchstart="event.preventDefault();" />  
+      oncontextmenu="return false" ondragstart="return false"
+      onmousedown="return false" ontouchstart="event.preventDefault();"  
+    />  
   </button>  
 
-  <!-- Settings Panel -->  
-  <div class="settings-panel" id="settingsPanel" aria-hidden="true">  
-    <button id="darkModeToggle" class="dark-mode-toggle">Dark Mode: OFF</button>  
-    <button id="safeModeToggle" class="dark-mode-toggle">Safe Mode: OFF</button>  
-  </div>  
+  <!-- ⚙️ Settings Panel -->  
+  <aside class="settings-panel" id="settingsPanel" aria-hidden="true">  
+    <button id="darkModeToggle" class="dark-mode-toggle" aria-pressed="false">Dark Mode: OFF</button>  
+    <button id="safeModeToggle" class="dark-mode-toggle" aria-pressed="false">Safe Mode: OFF</button>  
+  </aside>  
 
-  <!-- Main Container -->  
-  <div class="container">  
-    <h1>Confess Wall</h1>  
+  <!-- 🧱 Main Container -->  
+  <main class="container">  
+    <h1 class="app-title">Confess Wall</h1>  
 
-    <!-- Confession Form -->  
-<form id="confessForm" enctype="multipart/form-data" novalidate>  
-  <div class="textarea-wrapper" style="position: relative;">  
-    <textarea   
-      id="confessText"   
-      placeholder="Write your secret here..."   
-      required   
-      maxlength="500"  
-      aria-label="Confession Text"></textarea>  
-    
-    <div class="char-count" id="charCount">0/500</div>  
+    <!-- 📝 Confession Form -->  
+    <form id="confessForm" enctype="multipart/form-data" novalidate autocomplete="off">  
+      <div class="textarea-wrapper">  
+        <textarea   
+          id="confessText"   
+          placeholder="Write your secret here..."   
+          required maxlength="500"
+          aria-label="Confession Text"
+        ></textarea>  
 
-    <!-- Upload Photo Icon INSIDE textarea wrapper, bottom-left -->
-    <label for="photoUpload" class="photo-icon" title="Attach an image" style="position: absolute; bottom: 5px; left: 5px;">
-      <img   
-        src="https://cdn-icons-png.flaticon.com/512/1375/1375106.png"   
-        alt="Upload Photo"  
-        width="20" height="20"
-        class="protect-img2"  
-        oncontextmenu="return false"  
-        ondragstart="return false"  
-        onmousedown="return false"  
-        ontouchstart="event.preventDefault();" />  
-    </label>  
-  </div>  
+        <div class="char-count" id="charCount">0/500</div>  
 
-  <input   
-    type="file"   
-    id="photoUpload"   
-    accept="image/*"   
-    style="display: none;"   
-    aria-label="Upload Image" />
+        <!-- 📷 Upload Photo Icon -->  
+        <label for="photoUpload" class="photo-icon" title="Attach an image">
+          <img   
+            src="https://cdn-icons-png.flaticon.com/512/1375/1375106.png"   
+            alt="Upload Photo"
+            width="20" height="20"
+            class="protect-img2"
+            oncontextmenu="return false" ondragstart="return false"
+            onmousedown="return false" ontouchstart="event.preventDefault();"
+          />  
+        </label>  
+      </div>  
 
-      <!-- Preview Image + Remove Button -->  
-      <div class="preview-container" id="previewContainer" style="display: none;">  
+      <!-- 🔼 Hidden File Input -->  
+      <input   
+        type="file"   
+        id="photoUpload"   
+        accept="image/*"   
+        style="display: none;"   
+        aria-label="Upload Image" 
+      />  
+
+      <!-- 🖼️ Preview Container -->  
+      <div class="preview-container" id="previewContainer" hidden>  
         <img id="previewImage" class="preview-image protect-img2" alt="Selected Photo Preview" />  
         <button type="button" id="removePhoto" class="remove-photo" title="Remove Photo">✖</button>  
       </div>  
 
-      <!-- Submit Button -->  
+      <!-- ✅ Submit Button -->  
       <div class="submit-container">
         <button id="submitBtn" type="submit" aria-label="Submit Confession">Post Confession</button>
       </div>  
     </form>  
 
-    <!-- Display Confessions -->  
-    <div id="confessionList" aria-live="polite"></div>  
-  </div>  
+    <!-- 📜 Confession List Output -->  
+    <section id="confessionList" aria-live="polite"></section>  
+  </main>  
+    
+    <!-- Fullscreen Modal -->
+<div id="photoModal" class="photo-modal" role="dialog" aria-modal="true">
+  <div class="photo-content">
 
+    <!-- Main Image -->
+    <img id="modalImage" src="" alt="Confession Photo" />
+
+    <!-- Bottom Toolbar -->
+    <div class="photo-toolbar">
+      <button id="downloadBtn" title="Download Image" aria-label="Download Image">
+        <img src="https://cdn-icons-png.flaticon.com/512/2989/2989976.png" alt="Download Icon" />
+      </button>
+      <button id="shareBtn" title="Share Image" aria-label="Share Image">
+        <img src="https://cdn-icons-png.flaticon.com/512/786/786205.png" alt="Share Icon" />
+      </button>
+      <button id="closeModalBtn" title="Close Modal" aria-label="Close Modal">
+        <img src="https://cdn-icons-png.flaticon.com/512/1828/1828778.png" alt="Close Icon" />
+      </button>
+    </div>
+
+  </div>
+</div>
+
+  <!-- 🚀 Script Loader -->
   <script src="script.js" defer></script>  
 </body>  
 </html>
