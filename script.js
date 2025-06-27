@@ -13,7 +13,7 @@
 })();
 
 const servers = [
-  '0.0.0.0:3000', 'https://confessserver-production.up.railway.app'
+  '0.0.0.0:3000', 'https://confessserver.onrender.com'
 ];
 
 const memoryStorage = {
