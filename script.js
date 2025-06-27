@@ -1,5 +1,50 @@
 'use strict';
 
+if (sessionStorage.getItem("captchaPassed") !== "true") {
+  alert("Unauthorized access. Please complete CAPTCHA first.");
+  window.location.href = "index.html"; // Change this to your CAPTCHA page
+}
+
+const servers = [
+  'https://confessserver.onrender.com',
+  'https://confessserver-production.up.railway.app'
+];
+
+const memoryStorage = {
+  likeCooldowns: {}
+};
+
+let sessionSafeMode = false;
+
+// 🚀 Smart fetch with fallback
+async function smartFetch(endpoint, options = {}) {
+  for (let base of servers) {
+    try {
+      const res = await fetch(`${base}${endpoint}`, options);
+      if (!res.ok) throw new Error('Bad response');
+      return await res.json();
+    } catch (err) {
+      console.warn(`Failed to fetch from ${base}${endpoint}:`, err.message);
+    }
+  }
+  throw new Error("All servers are unreachable.");
+}
+
+// ✅ Cooldown Helpers
+function getCooldowns() {
+  return sessionSafeMode
+    ? memoryStorage.likeCooldowns
+    : JSON.parse(localStorage.getItem('likeCooldowns') || '{}');
+}
+
+function setCooldowns(data) {
+  if (sessionSafeMode) {
+    memoryStorage.likeCooldowns = data;
+  } else {
+    localStorage.setItem('likeCooldowns', JSON.stringify(data));
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('confessForm');
   const text = document.getElementById('confessText');
@@ -14,8 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingsPanel = document.getElementById('settingsPanel');
   const darkToggleBtn = document.getElementById('darkModeToggle');
   const safeToggleBtn = document.getElementById('safeModeToggle');
-
-  let sessionSafeMode = false;
 
   function escapeHTML(str) {
     return str.replace(/&/g, '&amp;')
@@ -41,14 +84,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (photo) formData.append('photo', photo);
 
     try {
-      const res = await fetch('https://resource-davidson-occasion-pcs.trycloudflare.com/confess', {
+      const data = await smartFetch('/confess', {
         method: 'POST',
         body: formData
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success) {
+      if (data.success) {
         text.value = '';
         fileInput.value = '';
         previewImage.src = '';
@@ -67,9 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadConfessions() {
     try {
-      const res = await fetch('https://resource-davidson-occasion-pcs.trycloudflare.com/confessions');
-      const confessions = await res.json();
-
+      const confessions = await smartFetch('/confessions');
       list.innerHTML = confessions.map(c => `
         <div class="confession" data-id="${c.id}">
           <p>${escapeHTML(c.message)}</p>
@@ -89,17 +128,35 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
       `).join('');
-
       setupHeartButtons();
     } catch (err) {
-      console.error('Error loading confessions:', err);
-      list.innerHTML = `<p style="color:red;">Failed to load confessions. Please refresh.</p>`;
+      console.error('❌ All servers failed. Reloading in 5 seconds...');
+      list.innerHTML = `<p style="color:red;">Servers unreachable. Reloading...</p>`;
+      setTimeout(() => location.reload(), 5000);
+    }
+  }
+
+  async function likeConfession(id, btn, countSpan) {
+    try {
+      const data = await smartFetch(`/confess/${id}/like`, {
+        method: 'POST'
+      });
+      if (data.success) {
+        countSpan.textContent = data.likes;
+        const cooldowns = getCooldowns();
+        cooldowns[id] = new Date().toISOString();
+        setCooldowns(cooldowns);
+        btn.classList.add('liked');
+        btn.disabled = true;
+      }
+    } catch (err) {
+      console.error('Like failed:', err);
     }
   }
 
   function setupHeartButtons() {
     const heartButtons = document.querySelectorAll('.heart-btn');
-    const likeCooldowns = JSON.parse(localStorage.getItem('likeCooldowns') || '{}');
+    const cooldowns = getCooldowns();
 
     heartButtons.forEach(btn => {
       const confession = btn.closest('.confession');
@@ -108,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const updateCooldown = () => {
         const now = Date.now();
-        const last = new Date(likeCooldowns[id] || 0).getTime();
+        const last = new Date(cooldowns[id] || 0).getTime();
         const diff = 24 * 60 * 60 * 1000 - (now - last);
 
         if (diff > 0) {
@@ -124,45 +181,28 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.classList.remove('cooldown');
           btn.disabled = false;
           btn.classList.remove('liked');
-          delete likeCooldowns[id];
-          localStorage.setItem('likeCooldowns', JSON.stringify(likeCooldowns));
+          delete cooldowns[id];
+          setCooldowns(cooldowns);
         }
       };
 
-      if (likeCooldowns[id]) {
+      if (cooldowns[id]) {
         updateCooldown();
         const interval = setInterval(() => {
-          if (!likeCooldowns[id]) return clearInterval(interval);
+          if (!cooldowns[id]) return clearInterval(interval);
           updateCooldown();
         }, 1000);
       }
 
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
         const now = Date.now();
-        const last = likeCooldowns[id] ? new Date(likeCooldowns[id]) : null;
-
+        const last = cooldowns[id] ? new Date(cooldowns[id]) : null;
         if (last && (now - last) < 24 * 60 * 60 * 1000) {
           alert("You've already liked this. Try again in 24 hours.");
           return;
         }
-
-        try {
-          const res = await fetch(`https://resource-davidson-occasion-pcs.trycloudflare.com/confess/${id}/like`, {
-            method: 'POST'
-          });
-          const data = await res.json();
-
-          if (data.success) {
-            countSpan.textContent = data.likes;
-            likeCooldowns[id] = new Date().toISOString();
-            localStorage.setItem('likeCooldowns', JSON.stringify(likeCooldowns));
-            btn.classList.add('liked');
-            btn.disabled = true;
-            updateCooldown();
-          }
-        } catch (err) {
-          console.error('Like failed:', err);
-        }
+        likeConfession(id, btn, countSpan);
       });
     });
   }
@@ -193,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function isLiked(id) {
-    const cooldowns = JSON.parse(localStorage.getItem('likeCooldowns') || '{}');
+    const cooldowns = getCooldowns();
     if (!cooldowns[id]) return false;
     const last = new Date(cooldowns[id]);
     return (Date.now() - last.getTime()) < 24 * 60 * 60 * 1000;
@@ -213,10 +253,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   safeToggleBtn?.addEventListener('click', () => {
-    sessionSafeMode = !sessionSafeMode;
-    safeToggleBtn.textContent = `Safe Mode: ${sessionSafeMode ? 'ON' : 'OFF'}`;
-    if (sessionSafeMode) localStorage.clear();
-  });
+  if (!sessionSafeMode) {
+    // Switching ON: move cooldowns from localStorage to memory
+    const stored = localStorage.getItem('likeCooldowns');
+    if (stored) memoryStorage.likeCooldowns = JSON.parse(stored);
+  } else {
+    // Switching OFF: move cooldowns from memory back to localStorage
+    localStorage.setItem('likeCooldowns', JSON.stringify(memoryStorage.likeCooldowns));
+  }
+
+  sessionSafeMode = !sessionSafeMode;
+  safeToggleBtn.textContent = `Safe Mode: ${sessionSafeMode ? 'ON' : 'OFF'}`;
+});
 
   (function loadDarkPreference() {
     if (!sessionSafeMode) {
@@ -233,6 +281,99 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasPhoto = fileInput.files.length > 0;
     submitBtn.disabled = !(hasText || hasPhoto);
   }
+  
+(() => {
+  // Preserve native functions
+  const nativeAlert = window.alert.bind(window);
+  const nativeConsole = { ...console };
+  const nativeEval = window.eval;
+  const nativeFunction = window.Function;
+
+  // Block console access visually and silently
+  const msg = "🚫 Console is disabled.";
+  ['log', 'warn', 'error', 'info', 'debug', 'trace'].forEach(method => {
+    console[method] = function () {
+      const div = document.createElement('div');
+      div.textContent = msg;
+      div.style = "color: red; background: black; padding: 8px; font-weight: bold;";
+      document.body.appendChild(div);
+    };
+  });
+
+  // Hard block eval and Function constructor
+  window.eval = function () {
+    nativeAlert("🚨 eval is blocked.");
+    throw new Error("eval is disabled.");
+  };
+
+  window.Function = function () {
+    nativeAlert("🚨 Function constructor is blocked.");
+    throw new Error("Function is disabled.");
+  };
+
+  // Optional: alert on prompt/confirm
+  window.prompt = () => {
+    nativeAlert("🚨 prompt is blocked.");
+    return null;
+  };
+  window.confirm = () => {
+    nativeAlert("🚨 confirm is blocked.");
+    return false;
+  };
+
+  // Prevent script injections
+  const observer = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.tagName === 'SCRIPT') {
+          nativeAlert("🚨 External script blocked.");
+          node.remove();
+        }
+      }
+    }
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Detect console tampering
+  setInterval(() => {
+    if (console.log.toString().includes('[native code]')) {
+      nativeAlert("🚨 Console tampering detected. Reloading...");
+      location.reload();
+    }
+  }, 5000);
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('confessForm');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); // Prevent form from submitting by default
+
+    const turnstileToken = document.querySelector('input[name="cf-turnstile-response"]')?.value;
+
+    if (!turnstileToken) {
+      alert("⚠️ Please complete the CAPTCHA before submitting.");
+      return;
+    }
+
+    // If token exists, you can continue submitting or show success
+    // Since you're on GitHub Pages (no server), we just show a success message
+    alert("✅ Confession submitted successfully!\n(CAPTCHA token: " + turnstileToken + ")");
+
+    // Clear form or reset logic
+    form.reset();
+    document.getElementById('charCount').textContent = "0/500";
+    document.getElementById('previewContainer').style.display = 'none';
+  });
+
+  // Character counter logic
+  const textArea = document.getElementById('confessText');
+  const charCount = document.getElementById('charCount');
+  textArea.addEventListener('input', () => {
+    charCount.textContent = `${textArea.value.length}/500`;
+  });
+});
 
   checkInput();
   loadConfessions();

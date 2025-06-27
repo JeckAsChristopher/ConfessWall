@@ -2,83 +2,176 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Confess Wall</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Human Verification</title>
+
+  <!-- Cloudflare Turnstile -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
+  <!-- Optional CSP (Content Security Policy) -->
+  <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; img-src https://cdn-icons-png.flaticon.com;"> -->
+
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(145deg, #eef2f5, #d3dbe0);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .verification-container {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      width: 320px;
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+    }
+
+    .icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 1rem;
+      user-select: none;
+      pointer-events: none;
+      transition: transform 0.6s ease, opacity 0.6s ease;
+    }
+
+    .lock-icon {
+      transform-origin: bottom center;
+      animation: bounceLock 1.2s ease-in-out infinite;
+    }
+
+    .unlock-icon {
+      position: absolute;
+      top: 2rem;
+      left: calc(50% - 28px);
+      opacity: 0;
+      transform: rotate(-90deg) scale(0);
+      transition: all 0.6s ease-in-out;
+    }
+
+    .unlocked .lock-icon {
+      transform: rotate(-45deg) translateY(-10px) scale(0.8);
+      opacity: 0;
+    }
+
+    .unlocked .unlock-icon {
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+
+    @keyframes bounceLock {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    h2 {
+      font-size: 1.3rem;
+      margin-bottom: 1.6rem;
+      color: #333;
+      transition: color 0.3s ease;
+    }
+
+    .unlocked h2 {
+      color: #1a8f00;
+    }
+
+    .cf-turnstile {
+      display: flex;
+      justify-content: center;
+    }
+
+    .disabled {
+      pointer-events: none;
+      opacity: 0.6;
+    }
+  </style>
 </head>
 <body>
-  <!-- Settings Button -->
-  <button class="settings-btn" id="settingsBtn" title="Settings" aria-label="Open Settings">
-    <img 
-      src="https://cdn-icons-png.flaticon.com/512/3524/3524659.png" 
-      alt="Settings Icon"
-      width="24" 
-      height="24"
-      class="protect-img"
-      oncontextmenu="return false"
-      ondragstart="return false"
-      onmousedown="return false"
-      ontouchstart="event.preventDefault();" />
-  </button>
-
-  <!-- Settings Panel -->
-  <div class="settings-panel" id="settingsPanel" aria-hidden="true">
-    <button id="darkModeToggle" class="dark-mode-toggle">Dark Mode: OFF</button>
-    <button id="safeModeToggle" class="dark-mode-toggle">Safe Mode: OFF</button>
+  <div class="verification-container" id="verifyBox">
+    <img
+      src="https://cdn-icons-png.flaticon.com/512/747/747305.png"
+      alt="Locked Padlock Icon"
+      class="icon lock-icon"
+      oncontextmenu="return false" ondragstart="return false"
+      onmousedown="return false" ontouchstart="event.preventDefault();"
+    />
+    <img
+      src="https://cdn-icons-png.flaticon.com/512/747/747315.png"
+      alt="Unlocked Padlock Icon"
+      class="icon unlock-icon"
+      oncontextmenu="return false" ondragstart="return false"
+      onmousedown="return false" ontouchstart="event.preventDefault();"
+    />
+    <h2 id="statusText">Please verify you're human</h2>
+    <div
+      class="cf-turnstile"
+      data-sitekey="0x4AAAAAABik1y5w-2dRqI5E"
+      data-callback="onVerified"
+    ></div>
   </div>
 
-  <!-- Main Container -->
-  <div class="container">
-    <h1>Confess Wall</h1>
+  <script>
+    const servers = [
+      'https://confessserver.onrender.com',
+      'https://confessserver-production.up.railway.app'
+    ];
 
-    <!-- Confession Form -->
-    <form id="confessForm" enctype="multipart/form-data" novalidate>
-      <div class="textarea-wrapper">
-  <div class="textarea-wrapper">
-  <textarea 
-    id="confessText" 
-    placeholder="Write your secret here..." 
-    required 
-    maxlength="500"
-    aria-label="Confession Text"></textarea>
+    async function onVerified(token) {
+      const box = document.getElementById("verifyBox");
+      const text = document.getElementById("statusText");
+      const captcha = document.querySelector(".cf-turnstile");
+      let success = false;
+      let lastError = null;
 
-  <div class="char-count" id="charCount">0/500</div>
-</div>
+      // Timeout fallback: auto-fail if fetch takes longer than 8s per server
+      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms));
 
-  <!-- Upload Photo Icon -->
-  <label for="photoUpload" class="photo-icon" title="Attach an image">
-    <img 
-      src="https://cdn-icons-png.flaticon.com/512/1375/1375106.png" 
-      alt="Upload Photo"
-      class="protect-img2"
-      oncontextmenu="return false"
-      ondragstart="return false"
-      onmousedown="return false"
-      ontouchstart="event.preventDefault();" />
-  </label>
+      for (const baseUrl of servers) {
+        try {
+          const res = await Promise.race([
+            fetch(`${baseUrl}/verify-turnstile`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ "cf-turnstile-response": token })
+            }),
+            timeout(8000)
+          ]);
 
-  <input 
-    type="file" 
-    id="photoUpload" 
-    accept="image/*" 
-    style="display: none;" 
-    aria-label="Upload Image" />
+          if (!res.ok) throw new Error(`Server error: ${res.status}`);
+          const data = await res.json();
 
-  <!-- Preview Image + Remove Button -->
-  <div class="preview-container" id="previewContainer" style="display: none;">
-    <img id="previewImage" class="preview-image protect-img2" alt="Selected Photo Preview" />
-    <button type="button" id="removePhoto" class="remove-photo" title="Remove Photo">✖</button>
-  </div>
-</div>
+          if (data.success) {
+            box.classList.add("unlocked");
+            text.textContent = "Access granted! Redirecting…";
+            sessionStorage.setItem("captchaPassed", "true");
+            captcha.classList.add("disabled");
+            success = true;
+            setTimeout(() => location.href = "main.html", 1500);
+            break;
+          } else {
+            text.textContent = "CAPTCHA failed. Please try again.";
+            return;
+          }
+        } catch (err) {
+          console.warn(`Failed to verify on ${baseUrl}:`, err);
+          lastError = err;
+        }
+      }
 
-      <div class="submit-container">
-  <button id="submitBtn" type="submit" aria-label="Submit Confession">Post Confession</button>
-</div>
-
-    <!-- Display Confessions -->
-    <div id="confessionList" aria-live="polite"></div>
-  </div>
-
-  <script src="script.js" defer></script>
+      if (!success) {
+        text.textContent = "Verification error. Refreshing in 5 seconds…";
+        console.error("All servers failed:", lastError);
+        setTimeout(() => location.reload(), 5000);
+      }
+    }
+  </script>
 </body>
 </html>
